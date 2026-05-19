@@ -145,7 +145,7 @@ export function useTtsWebSocket() {
 
       closeTtsWs();
 
-      const wsUrl = new URL("/speech/tts/ws", TTS_SERVER);
+      const wsUrl = new URL(`${TTS_SERVER}/speech/tts/ws`, window.location.origin);
       wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
       const ws = new WebSocket(wsUrl.toString());
       ws.binaryType = "arraybuffer";

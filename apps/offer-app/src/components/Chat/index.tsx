@@ -169,7 +169,7 @@ const ChatInner = ({
   setRedisInviteCode: React.Dispatch<React.SetStateAction<string | null>>;
 }) => {
   const loggedIn = !!user;
-  const chatUrl = `${API_BASE}/ai/agui/stream`;
+  const chatUrl = `${window.location.origin}${API_BASE}/ai/agui/stream`;
 
   const [chatInviteCode, setChatInviteCode] = useState<string | null>(null);
   const [sessionCleared, setSessionCleared] = useState(false);

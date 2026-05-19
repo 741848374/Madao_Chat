@@ -6,7 +6,13 @@ import { InvokeRecordInterceptor } from './invoke-record.interceptor';
 import { json, urlencoded } from 'express';
 import { WebSocketServer } from 'ws';
 import { TtsRelayService } from './speech/tts-relay.service';
+import dataSource from './data-source';
+
 async function bootstrap() {
+  await dataSource.initialize();
+  await dataSource.runMigrations();
+  await dataSource.destroy();
+
   const app = await NestFactory.create(AppModule, {
     rawBody: true,
   });
@@ -26,13 +32,17 @@ async function bootstrap() {
   ttsWs.on('connection', (ws, req) => {
     const reqUrl = new URL(req.url ?? '', 'http://localhost');
     const wantedSessionId = reqUrl.searchParams.get('sessionId') ?? undefined;
-    console.log(`[TTS] WS client connecting | wantedSessionId=${wantedSessionId ?? '(none)'}`);
+    console.log(
+      `[TTS] WS client connecting | wantedSessionId=${wantedSessionId ?? '(none)'}`,
+    );
     const sessionId = ttsRelayService.registerClient(ws, wantedSessionId);
 
     ws.on('message', (data) => {
       try {
         const msg = JSON.parse(data.toString());
-        console.log(`[TTS] WS message received | sessionId=${sessionId?.slice(0, 8)} | type=${msg.type}${msg.text ? ` | textLen=${msg.text.length}` : ''}`);
+        console.log(
+          `[TTS] WS message received | sessionId=${sessionId?.slice(0, 8)} | type=${msg.type}${msg.text ? ` | textLen=${msg.text.length}` : ''}`,
+        );
         if (msg.type === 'synthesize' && typeof msg.text === 'string') {
           ttsRelayService.handleDirectSynthesize(sessionId, msg.text);
         }
@@ -42,7 +52,9 @@ async function bootstrap() {
     });
 
     ws.on('close', () => {
-      console.log(`[TTS] WS client disconnected | sessionId=${sessionId?.slice(0, 8)}`);
+      console.log(
+        `[TTS] WS client disconnected | sessionId=${sessionId?.slice(0, 8)}`,
+      );
       ttsRelayService.unregisterClient(sessionId);
     });
   });

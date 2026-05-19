@@ -1,0 +1,156 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Press+Start+2P&display=swap");
+
+:root {
+  --color-bg: #faf9f6;
+  --color-bg-elevated: #f4f2ed;
+  --color-surface: #ffffff;
+  --color-surface-hover: #fcfbf9;
+  --color-border: #e8e4db;
+  --color-border-bright: #c5bfb2;
+  --color-accent: #2b2f4a;
+  --color-accent-dim: #1d2038;
+  --color-accent-glow: rgba(43, 47, 74, 0.06);
+
+  --color-text: #1b1917;
+  --color-text-dim: #8f8a82;
+  --color-text-bright: #0b0a08;
+
+  --color-user-bg: #f8f5fd;
+  --color-user-border: #e2ddf2;
+  --color-user-text: #2d2a40;
+
+  --color-assistant-bg: #ffffff;
+  --color-assistant-border: #e8e4db;
+
+  --color-error: #b8353f;
+  --color-error-bg: #fef6f6;
+  --color-error-border: #f4cccf;
+
+  --color-warning: #b2721c;
+  --color-warning-bg: #fdfaf4;
+  --color-warning-border: #eadab4;
+
+  --color-success: #4fc38b;
+  --color-success-bg: #f5faf7;
+  --color-success-border: #c4ded0;
+
+  --color-code-bg: #f4f2ed;
+  --color-code-border: #e3dfd5;
+
+  --radius: 3px;
+
+  --pixel: 4px;
+  --pixel2: 8px;
+  --pixel3: 12px;
+  --pixel4: 16px;
+  --pixel5: 20px;
+  --pixel6: 24px;
+  --pixel8: 32px;
+  --pixel10: 40px;
+
+  --font-mono: "JetBrains Mono", "Cascadia Code", "Fira Code", "Consolas",
+    "Courier New", monospace;
+  --font-pixel: "Press Start 2P", var(--font-mono);
+
+  --transition-fast: 140ms cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-base: 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-slow: 360ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-mono);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.7;
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 20% 0%, rgba(43, 47, 74, 0.012) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 100%, rgba(130, 120, 100, 0.008) 0%, transparent 50%);
+}
+
+#root {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  isolation: isolate;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-bright);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent-dim);
+}
+
+::selection {
+  background: var(--color-accent);
+  color: #ffffff;
+}
+
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes message-enter {
+  from { opacity: 0; transform: translateY(8px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 0.4; }
+  50% { transform: scale(1.35); opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes float-subtle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

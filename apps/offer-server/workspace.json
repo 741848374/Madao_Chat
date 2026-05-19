@@ -1,0 +1,28 @@
+{
+  "folders": [
+    {
+      "path": "D:/项目/nest_study/y-test"
+    },
+    {
+      "path": "D:/项目/ai-practice"
+    },
+    {
+      "path": "D:/ai"
+    }
+  ],
+  "settings": {},
+  "launch": {
+    "version": "0.2.0",
+    "attach": true,
+    "configurations": [
+      {
+        "name": "Launch",
+        "type": "node",
+        "request": "launch",
+        "program": "${workspaceFolder}/src/main.ts",
+        "args": [],
+        "cwd": "${workspaceFolder}"
+      }
+    ]
+  }
+}

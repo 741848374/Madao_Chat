@@ -1,0 +1,191 @@
+/* ========== Panel ========== */
+
+.github-panel {
+  width: 320px;
+  height: 82%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-top: 56px;
+  background: var(--color-bg);
+}
+
+/* ========== Loading / Empty ========== */
+
+.github-panel__loading,
+.github-panel__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--color-text-dim);
+}
+
+/* ========== List ========== */
+
+.github-panel__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pixel3);
+  padding: 0 var(--pixel3) var(--pixel8);
+  overflow-y: auto;
+  flex: 1;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.github-panel__list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.github-panel__list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.github-panel__list::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 2px;
+}
+
+.github-panel__list::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-bright);
+}
+
+/* ========== Card ========== */
+
+.github-panel__card {
+  border-radius: 10px;
+  background: var(--color-surface);
+  padding: var(--pixel3);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  transition:
+    box-shadow var(--transition-fast),
+    transform var(--transition-fast);
+  cursor: pointer;
+  user-select: none;
+}
+
+.github-panel__card:hover {
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
+}
+
+.github-panel__card--selected {
+  border: 1.5px solid var(--color-accent);
+  box-shadow:
+    0 0 0 3px var(--color-accent-glow),
+    0 2px 10px rgba(0, 0, 0, 0.06);
+  background: var(--color-user-bg);
+}
+
+.github-panel__card--selected:hover {
+  box-shadow:
+    0 0 0 3px var(--color-accent-glow),
+    0 4px 14px rgba(0, 0, 0, 0.08);
+}
+
+/* ========== Card Top ========== */
+
+.github-panel__card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--pixel2);
+  margin-bottom: var(--pixel);
+}
+
+.github-panel__card-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.github-panel__card-name {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--color-text);
+  line-height: 1.35;
+  word-break: break-all;
+}
+
+/* ========== Card Description ========== */
+
+.github-panel__card-desc {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--color-text-dim);
+  line-height: 1.5;
+  margin: 0 0 var(--pixel2) 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ========== Card Meta ========== */
+
+.github-panel__card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pixel);
+  margin-bottom: var(--pixel2);
+}
+
+.github-panel__card-lang {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--pixel2);
+  background: var(--color-accent-glow);
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.github-panel__card-topics {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--color-text-dim);
+  line-height: 1.5;
+}
+
+/* ========== Card Link ========== */
+
+.github-panel__card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 500;
+  color: var(--color-accent);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.github-panel__card-link:hover {
+  text-decoration: underline;
+  color: var(--color-accent-dim);
+  text-underline-offset: 2px;
+}
+
+/* ========== Responsive ========== */
+
+@media (max-width: 640px) {
+  .github-panel {
+    width: 100%;
+    height: auto;
+    max-height: 45vh;
+  }
+
+  .github-panel__list {
+    padding: var(--pixel3) var(--pixel2) var(--pixel5);
+  }
+
+  .github-panel__card-name {
+    font-size: 0.72rem;
+  }
+}

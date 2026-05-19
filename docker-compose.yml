@@ -1,0 +1,265 @@
+services:
+  # ============================================================
+  # — 关系型数据库，存用户、会话、GitHub 知识库等
+  # ============================================================
+  mysql:
+    image: mysql:8.0
+    container_name: offer-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-offer_root_123}
+      MYSQL_DATABASE: ${DB_NAME:-offer_db}
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-p${DB_PASSWORD:-offer_root_123}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    networks:
+      - offer-net
+
+  # ============================================================
+  #  Redis — 缓存 / JWT 黑名单 / LangGraph checkpoint
+  #  redis/redis-stack-server 包含 RediSearch + RedisJSON 模块，LangGraph 必需
+  # ============================================================
+  redis:
+    image: redis/redis-stack-server:latest
+    container_name: offer-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - offer-net
+
+  # ============================================================
+  #  etcd — Milvus 元数据存储
+  # ============================================================
+  etcd:
+    image: bitnami/etcd:3.5
+    container_name: offer-etcd
+    restart: unless-stopped
+    environment:
+      ALLOW_NONE_AUTHENTICATION: "yes"
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd:2379
+      ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+      ETCD_DATA_DIR: /etcd
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    volumes:
+      - etcd_data:/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - offer-net
+
+  # ============================================================
+  #  MinIO — Milvus 对象存储（向量索引 / 原始数据）
+  # ============================================================
+  minio:
+    image: minio/minio:RELEASE.2024-01-16T16-07-38Z
+    container_name: offer-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: minio server /minio_data --console-address ":9001"
+    volumes:
+      - minio_data:/minio_data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    networks:
+      - offer-net
+
+  # ============================================================
+  #  Milvus — 向量数据库
+  # ============================================================
+  milvus:
+    image: milvusdb/milvus:v2.4.0
+    container_name: offer-milvus
+    restart: unless-stopped
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY_ID: minioadmin
+      MINIO_SECRET_ACCESS_KEY: minioadmin
+      COMMON_STORAGETYPE: local
+    command: milvus run standalone
+    ports:
+      - "${MILVUS_PORT:-19530}:19530"
+      - "9091:9091"
+    volumes:
+      - milvus_data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 90s
+    networks:
+      - offer-net
+
+  # ============================================================
+  #  offer-server — NestJS 后端服务
+  # ============================================================
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: offer-server
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      milvus:
+        condition: service_healthy
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      # --- 服务器 ---
+      PORT: ${PORT:-3000}
+      NODE_ENV: production
+
+      # --- MySQL ---
+      DB_HOST: mysql
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USERNAME: ${DB_USERNAME:-root}
+      DB_PASSWORD: ${DB_PASSWORD:-offer_root_123}
+      DB_NAME: ${DB_NAME:-offer_db}
+
+      # --- Redis ---
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_DB: ${REDIS_DB:-0}
+
+      # --- Milvus ---
+      MILVUS_URL: milvus:19530
+      MILVUS_DATABASE: ${MILVUS_DATABASE:-default}
+      MILVUS_COLLECTION_NAME: ${MILVUS_COLLECTION_NAME:-offer_collection}
+      MILVUS_USERNAME: ${MILVUS_USERNAME:-}
+      MILVUS_PASSWORD: ${MILVUS_PASSWORD:-}
+      MILVUS_METRIC_TYPE: ${MILVUS_METRIC_TYPE:-COSINE}
+      MILVUS_INDEX_TYPE: ${MILVUS_INDEX_TYPE:-IVF_FLAT}
+
+      # --- OpenAI / 模型 ---
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      MODEL_NAME: ${MODEL_NAME:-gpt-4o}
+      EMBEDDINGS_MODEL_NAME: ${EMBEDDINGS_MODEL_NAME:-text-embedding-3-small}
+      VECTOR_DIM: ${VECTOR_DIM:-1536}
+
+      # --- JWT ---
+      JWT_SECRET: ${JWT_SECRET}
+      jwt_access_token_expires_time: ${jwt_access_token_expires_time:-30m}
+      jwt_refresh_token_expres_time: ${jwt_refresh_token_expres_time:-7d}
+
+      # --- 邮件 ---
+      EMAIL_HOST: ${EMAIL_HOST:-smtp.qq.com}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_SECURE: ${EMAIL_SECURE:-false}
+      EMAIL_USER: ${EMAIL_USER}
+      EMAIL_PASSWORD: ${EMAIL_PASSWORD}
+      EMAIL_FROM: ${EMAIL_FROM}
+
+      # --- 腾讯云 TTS ---
+      SECRET_ID: ${SECRET_ID:-}
+      SECRET_KEY: ${SECRET_KEY:-}
+      APP_ID: ${APP_ID:-}
+      TTS_VOICE_TYPE: ${TTS_VOICE_TYPE:-101001}
+
+      # --- 联网搜索 ---
+      BOCHA_API_KEY: ${BOCHA_API_KEY:-}
+
+      # --- GitHub ---
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_USER_AGENT: ${GITHUB_USER_AGENT:-offer-server}
+
+      # --- CORS（可选）---
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+
+      # --- 高德地图（可选）---
+      AMAP_MAPS_API_KEY: ${AMAP_MAPS_API_KEY:-}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('net').createConnection({port:3000},()=>process.exit(0)).on('error',()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - offer-net
+
+  # ============================================================
+  #  Nginx — 前端静态资源 + API 反向代理
+  # ============================================================
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    container_name: offer-nginx
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    networks:
+      - offer-net
+
+# ============================================================
+#  持久化卷
+# ============================================================
+volumes:
+  mysql_data:
+  redis_data:
+  etcd_data:
+  minio_data:
+  milvus_data:
+
+# ============================================================
+#  内部网络
+# ============================================================
+networks:
+  offer-net:
+    driver: bridge

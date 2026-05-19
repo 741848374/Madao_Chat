@@ -1,0 +1,4 @@
+packages:
+  - "apps/*"
+  - "apps/offer-server"
+  - "apps/offer-app"

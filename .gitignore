@@ -1,0 +1,57 @@
+# turbo
+.turbo
+
+# dependencies
+node_modules
+.pnp
+.pnp.js
+
+# build outputs
+dist
+apps/*/dist
+build
+
+# uploads
+uploads
+
+# environment variables (⚠️ 敏感信息，绝对不能提交)
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# test coverage
+coverage
+.nyc_output
+
+# diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# temp
+.temp
+.tmp

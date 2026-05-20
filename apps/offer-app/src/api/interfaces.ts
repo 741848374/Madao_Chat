@@ -258,8 +258,9 @@ export function ingestGithubRepos(username: string, maxRepos?: number) {
 }
 
 export function deleteGithubRepo(repo: string) {
+  const [owner, name] = repo.split("/");
   return request.delete<{ success: boolean; message: string }>(
-    `/github/ingest/${encodeURIComponent(repo)}`,
+    `/github/ingest/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`,
   );
 }
 

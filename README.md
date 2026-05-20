@@ -12,10 +12,11 @@
 - **流式对话** — 基于 SSE 的实时流式响应，前端逐字渲染 Markdown（代码高亮、Mermaid 图表）
 - **TTS 语音播报** — 集成腾讯云 TTS，支持 AI 回答实时语音合成与前端直接合成两种模式
 - **语音输入** — 集成腾讯云 ASR，支持语音转文字输入
-- **会话记忆** — 基于 Redis checkpoint 的 LangGraph 状态持久化，刷新页面后可恢复对话
-- **简历智能解析** — 上传 PDF/Word 简历，AI 自动分割为多个模块并向量化存储
-- **GitHub 知识库** — 输入 GitHub 仓库地址，自动拉取 README 并向量化索引
+- **AI 总结生成** — 所有子问题回答完毕后自动生成结构化面试总结，候选人第一人称口吻可直接展示
+- **简历智能解析** — 上传 PDF/Word 简历，AI 自动分割为 6 个模块并向量化存储
+- **GitHub 知识库** — 输入 GitHub 用户名批量拉取仓库 README 并向量化索引
 - **像素风 UI** — 基于 PxlKit + Tailwind CSS 的复古像素风格界面
+- **会话记忆** — 基于 Redis checkpoint 的 LangGraph 状态持久化，刷新页面后可恢复对话
 
 ***
 
@@ -251,6 +252,17 @@ npm run dev
 
 暂无
 
+### 面试总结
+
+- 所有子问题回答完毕后，系统自动生成结构化面试总结
+- 总结以候选人第一人称口吻呈现，可直接展示给面试官
+- 总结仅基于实际问答生成，严禁编造
+
+### 思考过程
+
+- 每个 AI 回复均带"思考过程"折叠栏，默认展开
+- 展开可查看问题拆解、向量检索和回答推理详情
+
 ### GitHub 知识库
 
 1. 点击导航栏用户菜单 → "上传 GitHub"
@@ -322,9 +334,10 @@ npm run dev
     ├── inviteCodeCheck     → 提取检查邀请码
     ├── inviteCodeQuery     → 验证邀请码 + Redis 缓存
     ├── decomposeNode       → 问题拆解为独立子问题
-    ├── retrieveNode        → Milvus 向量检索 Top-K
-    ├── planRetrievalNode   → 检索质量评估
-    ├── answerNode          → Agentic 回答生成（含联网搜索）
+    ├── retrieveNode        → Milvus 向量检索 Top-K（简历+GitHub联合检索）
+    ├── planRetrievalNode   → 检索质量评估与补充检索规划
+    ├── answerNode          → Agentic 回答生成（含联网搜索回退）
+    ├── summarizeNode       → 全子问题回答完毕后生成面试总结（候选人第一人称）
     └── clearSessionNode    → 清理会话缓存
   → SSE Stream → 前端渲染 + TTS 语音播报
 ```

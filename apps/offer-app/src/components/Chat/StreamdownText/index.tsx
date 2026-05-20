@@ -38,7 +38,7 @@ export function StreamdownText({
           onClick={() => setFolded((f) => !f)}
           aria-expanded={!isFolded}
         >
-          <span className="chat-streamdown-fold__label">CODE</span>
+          <span className="chat-streamdown-fold__label">思考过程</span>
           <span className="chat-streamdown-fold__chevron" aria-hidden="true">
             ▸
           </span>

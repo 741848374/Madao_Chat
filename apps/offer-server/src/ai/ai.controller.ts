@@ -145,9 +145,35 @@ export class AiController {
     @UserInfo() user: any,
     @Res() res: Response,
   ) {
-    const record = await this.uploadFileService.findFilePathById(id);
+    const record = await this.uploadFileService.findById(id);
     if (!record || record.userId !== user.UserId) {
       throw new BadRequestException('文件记录不存在');
+    }
+
+    const ext = (record.fileType || '').toLowerCase();
+
+    if (ext === '.docx' || ext === '.doc') {
+      if (!record.filePath || !fs.existsSync(record.filePath)) {
+        throw new BadRequestException('文件不存在');
+      }
+      try {
+        const docs = await this.documentLoadService.loadDocument(
+          record.filePath,
+          ext,
+        );
+        const text = docs.map((doc) => doc.pageContent).join('\n\n---\n\n');
+        const buf = Buffer.from('\uFEFF' + text, 'utf-8');
+        res.writeHead(200, {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Content-Length': buf.length,
+          'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(record.filename.replace(/\.[^.]+$/, '.txt'))}`,
+        });
+        res.end(buf);
+      } catch {
+        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('(文档解析失败)');
+      }
+      return;
     }
 
     if (!record.filePath || !fs.existsSync(record.filePath)) {
@@ -157,12 +183,8 @@ export class AiController {
     const mimeTypes: Record<string, string> = {
       '.pdf': 'application/pdf',
       '.md': 'text/markdown; charset=utf-8',
-      '.doc': 'application/msword',
-      '.docx':
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     };
 
-    const ext = record.fileType || '';
     const contentType = mimeTypes[ext] || 'application/octet-stream';
 
     res.setHeader('Content-Type', contentType);

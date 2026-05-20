@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createAgent } from 'langchain';
 import { Logger } from '@nestjs/common';
 import { Tool } from '@langchain/core/tools';
+import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { RedisService } from '../../../redis/redis.service';
 
 const IntentSchema = z.object({
@@ -36,6 +37,7 @@ export async function intentRouteNode(
     redisService: RedisService;
     messageTool: Tool;
   },
+  config?: LangGraphRunnableConfig,
 ) {
   const username: string = state.username;
   const messages = state.messages;
@@ -68,6 +70,23 @@ export async function intentRouteNode(
         'intentRouteNode',
       );
       cached = null;
+    }
+  }
+
+  if (!cached && config?.configurable?.thread_id) {
+    const threadKey = `invite_code_thread:${config.configurable.thread_id}`;
+    try {
+      cached = await tools.redisService.get(threadKey);
+      Logger.log(
+        `[意图路由|诊断] threadId回退查询 | key="${threadKey}" | 结果=${cached ? '命中(有值)' : 'MISS(空)'}`,
+        'intentRouteNode',
+      );
+    } catch (err) {
+      Logger.error(
+        `[意图路由|诊断] threadId回退查询异常 | key="${threadKey}" | err="${err}"`,
+        err instanceof Error ? err.stack : undefined,
+        'intentRouteNode',
+      );
     }
   }
 
@@ -122,6 +141,14 @@ export async function intentRouteNode(
         inviteeUserInfo: userInfo,
         username,
         stream: [validatedMessage],
+        chatMemory: [
+          {
+            role: 'assistant',
+            content: inviteCode,
+            type: 'message-invite-code-validated',
+            timestamp: Date.now(),
+          },
+        ],
       };
     }
 
@@ -143,6 +170,14 @@ export async function intentRouteNode(
       inviteeUserInfo: userInfo,
       username,
       stream: [validatedMessage],
+      chatMemory: [
+        {
+          role: 'assistant',
+          content: inviteCode,
+          type: 'message-invite-code-validated',
+          timestamp: Date.now(),
+        },
+      ],
     };
   }
 
@@ -161,6 +196,54 @@ export async function intentRouteNode(
       'intentRouteNode',
     );
 
+    const syncUsername = state.inviteeUserInfo?.username || username;
+    if (syncUsername) {
+      try {
+        await tools.redisService.set(
+          REDIS_PREFIX + syncUsername,
+          JSON.stringify({
+            inviteCode: state.inviteCode,
+            userInfo: state.inviteeUserInfo,
+          }),
+          3600,
+        );
+        Logger.log(
+          `[意图路由|诊断] 🔄 重新同步Redis缓存 | key="${REDIS_PREFIX}${syncUsername}"`,
+          'intentRouteNode',
+        );
+      } catch (err) {
+        Logger.error(
+          `[意图路由|诊断] 重新同步Redis失败: ${err}`,
+          err instanceof Error ? err.stack : undefined,
+          'intentRouteNode',
+        );
+      }
+    }
+
+    if (config?.configurable?.thread_id) {
+      const threadKey = `invite_code_thread:${config.configurable.thread_id}`;
+      try {
+        await tools.redisService.set(
+          threadKey,
+          JSON.stringify({
+            inviteCode: state.inviteCode,
+            userInfo: state.inviteeUserInfo,
+          }),
+          3600,
+        );
+        Logger.log(
+          `[意图路由|诊断] 🔄 重新同步threadId缓存 | key="${threadKey}"`,
+          'intentRouteNode',
+        );
+      } catch (err) {
+        Logger.error(
+          `[意图路由|诊断] 重新同步threadId缓存失败: ${err}`,
+          err instanceof Error ? err.stack : undefined,
+          'intentRouteNode',
+        );
+      }
+    }
+
     const validatedMessage = await tools.messageTool.invoke({
       type: 'message-invite-code-validated',
       content: state.inviteCode,
@@ -174,6 +257,14 @@ export async function intentRouteNode(
       inviteeUserInfo: state.inviteeUserInfo,
       username,
       stream: [validatedMessage],
+      chatMemory: [
+        {
+          role: 'assistant',
+          content: state.inviteCode,
+          type: 'message-invite-code-validated',
+          timestamp: Date.now(),
+        },
+      ],
     };
   }
 
@@ -217,17 +308,20 @@ async function classifyIntent(
     responseFormat: IntentSchema,
     systemPrompt: `你是意图分类路由器。分析用户最后一条消息的意图。
 
-分类规则：
-- interviewer（面试官）: 面试官角色提问、技术知识问答、编程问题、算法题、计算机基础问题等。
-  例如："我是面试官"、"什么是闭包"、"栈和队列的区别"、"请开始面试"
-- interviewee（面试者）: 用户想被面试、模拟面试、让AI出题考自己。
-  例如："我想体验被面试"、"假装你是面试官来面试我"、"帮我模拟面试"
-- general（通用）: 仅限纯闲聊/问候，如："你好"、"在吗"。技术问题不属于此类。
-- end_interview（结束面试）: 用户明确表达结束或退出面试的意图。
-  例如："结束面试"、"退出"、"再见"、"拜拜"、"不面了"、"今天就到这里"、"先这样吧"、"关闭面试"、"停止面试"、"我不想面试了"。
-
-额外规则：
-且用户本次回复是一串字符，则将意图归类为 interviewer，并提取该字符串作为 inviteCode。
+分类规则（按优先级排序）：
+1. end_interview（结束面试）最高优先级: 用户明确表达结束或退出面试的意图。
+   例如："结束面试"、"退出"、"再见"、"拜拜"、"不面了"、"今天就到这里"、"先这样吧"、"关闭面试"、"停止面试"、"我不想面试了"。
+2. interviewer（面试官）最高覆盖面: 面试官角色提问，涵盖一切与候选人知识、能力、背景、项目相关的问题：
+   - 技术知识问答："什么是闭包"、"栈和队列的区别"、"Redis持久化原理"
+   - 编程/算法题："写一个快速排序"、"如何实现防抖"
+   - 候选人项目/经历相关："你做过什么项目"、"介绍一下你的GitHub项目"、"聊聊你的工作经历"、"你用过哪些技术栈"、"你的项目里用了什么架构"、"分析一下项目X"、"这个仓库主要是做什么的"
+   - 职业规划/软技能："程序员如何规划职业发展"、"如何平衡深度和广度"
+   - 计算机基础："什么是操作系统"、"HTTP和HTTPS的区别"
+   - 此外，如果用户消息是一串看起来像邀请码的字母数字组合，则归类为 interviewer 并提取为 inviteCode。
+3. interviewee（面试者）: 用户明确想被面试、模拟面试、让AI出题考自己。
+   例如："我想体验被面试"、"假装你是面试官来面试我"、"帮我模拟面试"、"你来面试我"
+4. general（通用）: 严格仅限纯闲聊/寒暄/客套，如："你好"、"在吗"、"谢谢"、"今天天气不错"。
+   【重要】凡是涉及技术、项目、代码、工作经历、知识问答的内容，一律归类为 interviewer，不得归类为 general。
 
 用户消息：${lastUserMessage}`,
   });

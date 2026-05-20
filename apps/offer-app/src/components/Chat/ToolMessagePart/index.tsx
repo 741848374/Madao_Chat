@@ -53,6 +53,7 @@ const ToolMessagePart = ({ part }: { part: AnyToolPart }) => {
     );
   }
   if (part.state === "input-streaming" || part.state === "input-available") {
+    if (name === "message") return null;
     const inputJson = streamValueToJson(
       "input" in part ? part.input : undefined,
     );
@@ -61,11 +62,7 @@ const ToolMessagePart = ({ part }: { part: AnyToolPart }) => {
   }
   const rawOut = part.output;
   if (name !== "message") {
-    const content =
-      rawOut && typeof rawOut === "object" && "content" in rawOut
-        ? String(rawOut["content"]).replace(/\\n/g, "\n")
-        : "";
-    return <NotAvailableOutput content={content || "工具输出"} />;
+    return null;
   }
 
   const { type, rawContent } = parseMessage(rawOut);
@@ -73,10 +70,15 @@ const ToolMessagePart = ({ part }: { part: AnyToolPart }) => {
 
   switch (type) {
     case "message-answer":
+      return null;
+
+    case "message-summary":
       return (
-        <div className="chat-tool chat-tool--answer">
-          <div className="chat-tool__answer-body">
-            <pre className="chat-tool__answer-text">{content}</pre>
+        <div className="chat-tool chat-tool--summary">
+          <div className="chat-tool__summary-body">
+            <div className="chat-tool__summary-text">
+              {content.replace(/^##\s*面试总结\s*\n*/g, "")}
+            </div>
           </div>
         </div>
       );

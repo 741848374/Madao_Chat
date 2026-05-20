@@ -13,6 +13,7 @@ interface WebSearchPage {
 interface WebSearchResults {
   query: string;
   results: WebSearchPage[];
+  subQuestion?: string;
 }
 
 function parseWebSearchContent(content: string): WebSearchResults | null {
@@ -79,7 +80,9 @@ const WebSearchOutput = ({ content }: { content: string }) => {
         <span className="chat-tool__ws-icon" aria-hidden="true">
           🌐
         </span>
-        <span className="chat-tool__ws-label">联网搜索</span>
+        <span className="chat-tool__ws-label">
+          联网搜索{data.subQuestion ? ` — ${data.subQuestion}` : ""}
+        </span>
         <span className="chat-tool__ws-count">
           {data.results.length} 条结果
         </span>
@@ -120,9 +123,7 @@ const WebSearchOutput = ({ content }: { content: string }) => {
 
             <div className="chat-tool__ws-card-footer">
               {item.siteName && (
-                <span className="chat-tool__ws-card-site">
-                  {item.siteName}
-                </span>
+                <span className="chat-tool__ws-card-site">{item.siteName}</span>
               )}
               {item.dateLastCrawled && (
                 <span className="chat-tool__ws-card-date">

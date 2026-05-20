@@ -30,8 +30,7 @@ function parseWebSearchResult(raw: string, query: string): WebSearchResults {
     const summary = /^摘要:\s*(.+)$/m.exec(trimmed)?.[1] ?? '';
     const siteName = /^网站名称:\s*(.+)$/m.exec(trimmed)?.[1] ?? '';
     const siteIcon = /^网站图标:\s*(.+)$/m.exec(trimmed)?.[1] ?? '';
-    const dateLastCrawled =
-      /^发布时间:\s*(.+)$/m.exec(trimmed)?.[1] ?? '';
+    const dateLastCrawled = /^发布时间:\s*(.+)$/m.exec(trimmed)?.[1] ?? '';
 
     if (title || url) {
       results.push({
@@ -104,8 +103,7 @@ function extractWebSearchResults(
   });
 
   for (const msg of toolMsgs) {
-    const raw: string =
-      typeof msg.content === 'string' ? msg.content : '';
+    const raw: string = typeof msg.content === 'string' ? msg.content : '';
     if (
       !raw ||
       raw.startsWith('未找到相关结果') ||
@@ -208,10 +206,12 @@ export async function answerNode(
     }
 
     Logger.log(
-      `[回答] Agent完成 | answer=${answerText.length}字符 | webSearch=${webSearchData ? webSearchData.results.length + '条' : '无'} | llmCalls=${messages.filter((m: any) => {
-        const t = m._getType?.() ?? m.getType?.() ?? '';
-        return t === 'ai';
-      }).length}次`,
+      `[回答] Agent完成 | answer=${answerText.length}字符 | webSearch=${webSearchData ? webSearchData.results.length + '条' : '无'} | llmCalls=${
+        messages.filter((m: any) => {
+          const t = m._getType?.() ?? m.getType?.() ?? '';
+          return t === 'ai';
+        }).length
+      }次`,
       'answerNode',
     );
   } catch (err) {
@@ -237,14 +237,7 @@ export async function answerNode(
     timestamp: Date.now(),
   };
 
-  const chatMemory: any[] = [
-    {
-      role: 'user',
-      content: subQuestion,
-      timestamp: Date.now(),
-    },
-    answerMemoryEntry,
-  ];
+  const chatMemory: any[] = [answerMemoryEntry];
 
   let retrievalInfo: string;
   if (allRetrievedDocs.length > 0) {
@@ -258,11 +251,11 @@ export async function answerNode(
   if (webSearchData && webSearchData.results.length > 0) {
     const webSearchMsg = await tools.messageTool.invoke({
       type: 'message-web-search',
-      content: JSON.stringify(webSearchData),
+      content: JSON.stringify({ ...webSearchData, subQuestion }),
     });
     stream.push(webSearchMsg);
 
-    answerMemoryEntry.webSearch = webSearchData;
+    answerMemoryEntry.webSearch = { ...webSearchData, subQuestion };
   }
 
   const msgResult = await tools.messageTool.invoke({

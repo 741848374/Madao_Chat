@@ -1,6 +1,7 @@
 import { Tool } from '@langchain/core/tools';
 import { Repository } from 'typeorm';
 import { Logger } from '@nestjs/common';
+import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { User } from '../../../auth/entities/User.entity';
 import { RedisService } from '../../../redis/redis.service';
 
@@ -16,6 +17,7 @@ export async function inviteCodeQueryNode(
     messageTool: Tool;
     redisService: RedisService;
   },
+  config?: LangGraphRunnableConfig,
 ) {
   const inviteCode: string | null = state.inviteCode;
   const username: string = state.username;
@@ -127,6 +129,27 @@ export async function inviteCodeQueryNode(
         'inviteCodeQueryNode',
       );
     }
+  }
+
+  if (config?.configurable?.thread_id) {
+    const threadKey = `invite_code_thread:${config.configurable.thread_id}`;
+    try {
+      await tools.redisService.set(
+        threadKey,
+        JSON.stringify({ inviteCode, userInfo }),
+        REDIS_TTL,
+      );
+      Logger.log(
+        `[邀请码查询] threadId缓存写入 | key="${threadKey}" | ttl=${REDIS_TTL}s`,
+        'inviteCodeQueryNode',
+      );
+    } catch (err) {
+      Logger.error(
+        `[邀请码查询] threadId缓存写入失败: ${err}`,
+        err instanceof Error ? err.stack : undefined,
+        'inviteCodeQueryNode',
+      );
+    }
   } else {
     Logger.warn(
       `[邀请码查询|诊断] redisUsername为空，跳过Redis缓存写入 | inviteCode="${inviteCode}" | state.username="${state.username ?? '(undefined)'}" | user.username="${user.username}"`,
@@ -151,5 +174,13 @@ export async function inviteCodeQueryNode(
     inviteeUserInfo: userInfo,
     username: redisUsername,
     generation: 'inviteCodeValidated',
+    chatMemory: [
+      {
+        role: 'assistant',
+        content: inviteCode,
+        type: 'message-invite-code-validated',
+        timestamp: Date.now(),
+      },
+    ],
   };
 }

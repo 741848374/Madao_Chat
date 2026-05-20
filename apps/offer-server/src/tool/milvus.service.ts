@@ -126,11 +126,23 @@ export class MilvusService implements OnModuleInit {
         );
         return;
       }
-      await this.milvus.client.delete({
+
+      const loadResp = await this.milvus.client.loadCollectionSync({
+        collection_name: this.milvusConfig.collectionName,
+      });
+      if (loadResp.error_code !== 0 && loadResp.error_code !== undefined) {
+        this.logger.warn(
+          `Milvus loadCollection 返回非零: ${JSON.stringify(loadResp)}`,
+        );
+      }
+
+      const deleteResp = await this.milvus.client.delete({
         collection_name: this.milvusConfig.collectionName,
         filter,
       });
-      this.logger.log(`Milvus 删除成功: ${filter}`);
+      this.logger.log(
+        `Milvus 删除完成: filter=${filter} | deleteResp=${JSON.stringify(deleteResp)}`,
+      );
     } catch (error) {
       this.logger.error(`Milvus 删除失败: ${error.message}`);
       throw error;

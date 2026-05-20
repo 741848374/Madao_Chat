@@ -41,6 +41,7 @@ const UploadGithubModal = ({ onClose }: Props) => {
   } | null>(null);
   const [ingestedRepos, setIngestedRepos] = useState<IngestedRepo[]>([]);
   const [loadingIngested, setLoadingIngested] = useState(false);
+  const [confirmIngest, setConfirmIngest] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(null);
 
   const showToast = (text: string, type: "success" | "error" = "success") => {
@@ -55,7 +56,6 @@ const UploadGithubModal = ({ onClose }: Props) => {
       const res = await getIngestedRepos();
       setIngestedRepos(res.data.repos);
     } catch {
-      // 静默失败，不影响主流程
     } finally {
       setLoadingIngested(false);
     }
@@ -97,6 +97,7 @@ const UploadGithubModal = ({ onClose }: Props) => {
     if (!username.trim()) return;
     setError("");
     setResult(null);
+    setConfirmIngest(false);
     setIngesting(true);
     try {
       const res = await ingestGithubRepos(username.trim(), maxRepos);
@@ -327,23 +328,10 @@ const UploadGithubModal = ({ onClose }: Props) => {
                     className="modal__submit github-modal__ingest-btn"
                     type="button"
                     disabled={ingesting}
-                    onClick={handleIngest}
+                    onClick={() => setConfirmIngest(true)}
                     style={{ flex: 1, marginTop: 0 }}
                   >
                     {ingesting ? "入库中…" : "→ 提取并入库"}
-                  </button>
-                  <button
-                    className="modal__submit modal__submit--secondary"
-                    type="button"
-                    disabled={ingesting}
-                    onClick={() => {
-                      if (result?.repos.length) {
-                        result.repos.forEach((name) => handleDelete(name));
-                      }
-                    }}
-                    style={{ flex: 1, marginTop: 0 }}
-                  >
-                    删除已入库
                   </button>
                 </div>
               </div>
@@ -369,6 +357,57 @@ const UploadGithubModal = ({ onClose }: Props) => {
           </div>
         </div>
       </div>
+
+      {confirmIngest && (
+        <div
+          className="modal-overlay"
+          style={{ zIndex: 1000 }}
+          onClick={() => setConfirmIngest(false)}
+        >
+          <div
+            className="modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            style={{ maxWidth: 400 }}
+          >
+            <div className="modal__header">
+              <h2 className="modal__title">确认入库</h2>
+              <button
+                className="modal__close"
+                type="button"
+                onClick={() => setConfirmIngest(false)}
+                aria-label="关闭"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="modal__form">
+              <p style={{ margin: "var(--pixel3) 0", lineHeight: 1.6, color: "var(--color-text-dim)" }}>
+                入库会<strong style={{ color: "var(--color-error)" }}>覆盖</strong>原有已入库项目，确认继续吗？
+              </p>
+              <div style={{ display: "flex", gap: "var(--pixel2)", marginTop: "var(--pixel3)" }}>
+                <button
+                  className="modal__submit modal__submit--secondary"
+                  type="button"
+                  onClick={() => setConfirmIngest(false)}
+                  style={{ flex: 1, marginTop: 0 }}
+                >
+                  取消
+                </button>
+                <button
+                  className="modal__submit"
+                  type="button"
+                  onClick={handleIngest}
+                  style={{ flex: 1, marginTop: 0 }}
+                >
+                  确认入库
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

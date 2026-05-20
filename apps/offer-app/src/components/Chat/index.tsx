@@ -63,51 +63,82 @@ const Chat = () => {
       .then((res) => {
         const items = res.data.chatMemory ?? [];
         if (items.length > 0) {
-          const msgs: UIMessage[] = items.map((item) => {
-            const id = `mem-${item.timestamp}-${Math.random().toString(36).slice(2, 8)}`;
-            const role = item.role as "user" | "assistant";
+          const inviteItem = items.find(
+            (item) => item.type === "message-invite-code-validated",
+          );
+          if (inviteItem?.content) {
+            setRedisInviteCode(inviteItem.content);
+          }
 
-            if (role === "assistant" && item.type) {
-              const parts: UIMessage["parts"] = [];
+          const summaryPositions = new Set<number>();
+          for (let i = 0; i < items.length; i++) {
+            if (items[i].type === "message-summary") summaryPositions.add(i);
+          }
 
-              if (item.webSearch) {
-                const wsToolCallId = `tc-ws-${item.timestamp}`;
-                const wsContent = JSON.stringify(item.webSearch);
+          const keepSet = new Set<number>();
+          for (const si of summaryPositions) {
+            keepSet.add(si);
+            for (let j = si - 1; j >= 0; j--) {
+              keepSet.add(j);
+              if (items[j].role === "user") break;
+            }
+          }
+
+          const safeItems =
+            keepSet.size > 0 ? items.filter((_, i) => keepSet.has(i)) : [];
+
+          const msgs: UIMessage[] = safeItems
+            .filter(
+              (item) =>
+                !item.type ||
+                (item.type !== "message-answer" &&
+                  item.type !== "message-invite-code-validated"),
+            )
+            .map((item) => {
+              const id = `mem-${item.timestamp}-${Math.random().toString(36).slice(2, 8)}`;
+              const role = item.role as "user" | "assistant";
+
+              if (role === "assistant" && item.type) {
+                const parts: UIMessage["parts"] = [];
+
+                if (item.webSearch) {
+                  const wsToolCallId = `tc-ws-${item.timestamp}`;
+                  const wsContent = JSON.stringify(item.webSearch);
+                  parts.push({
+                    type: "dynamic-tool" as const,
+                    state: "output-available" as const,
+                    toolName: "message",
+                    toolCallId: wsToolCallId,
+                    input: { type: "message-web-search", content: wsContent },
+                    output: { type: "message-web-search", content: wsContent },
+                  } as UIMessage["parts"][number]);
+                }
+
+                const toolCallId = `tc-${item.timestamp}`;
                 parts.push({
                   type: "dynamic-tool" as const,
                   state: "output-available" as const,
                   toolName: "message",
-                  toolCallId: wsToolCallId,
-                  input: { type: "message-web-search", content: wsContent },
-                  output: { type: "message-web-search", content: wsContent },
+                  toolCallId,
+                  input: { type: item.type, content: item.content },
+                  output: { type: item.type, content: item.content },
                 } as UIMessage["parts"][number]);
-              }
 
-              const toolCallId = `tc-${item.timestamp}`;
-              parts.push({
-                type: "dynamic-tool" as const,
-                state: "output-available" as const,
-                toolName: "message",
-                toolCallId,
-                input: { type: item.type, content: item.content },
-                output: { type: item.type, content: item.content },
-              } as UIMessage["parts"][number]);
+                return {
+                  id,
+                  role,
+                  content: item.content,
+                  parts,
+                } as UIMessage;
+              }
 
               return {
                 id,
                 role,
                 content: item.content,
-                parts,
+                parts: [{ type: "text" as const, text: item.content }],
               } as UIMessage;
-            }
-
-            return {
-              id,
-              role,
-              content: item.content,
-              parts: [{ type: "text" as const, text: item.content }],
-            } as UIMessage;
-          });
+            });
           setInitialMessages(msgs);
         }
         setMemoryLoaded(true);
@@ -177,6 +208,17 @@ const ChatInner = ({
   const resolvedInviteCode = sessionCleared
     ? null
     : inviteCode || redisInviteCode || chatInviteCode;
+
+  useEffect(() => {
+    if (!user || inviteCode || redisInviteCode || chatInviteCode) return;
+    checkInviteCode()
+      .then((res) => {
+        if (res.data.validated && res.data.inviteCode) {
+          setRedisInviteCode(res.data.inviteCode);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const threadIdRef = useRef<string | null>(
     localStorage.getItem(THREAD_ID_KEY),
@@ -289,30 +331,30 @@ const ChatInner = ({
   }, [messages, chatInviteCode]);
 
   useEffect(() => {
-    for (const msg of messages) {
-      if (msg.role !== "assistant") continue;
-      for (const part of msg.parts) {
-        const toolTypes = new Set(["tool-invocation", "dynamic-tool"]);
-        if (!toolTypes.has(part.type)) continue;
-        const output = (part as any).output;
-        if (
-          output &&
-          typeof output === "object" &&
-          output.type === "message-session-cleared"
-        ) {
-          setChatInviteCode(null);
-          setRedisInviteCode(null);
-          setSessionCleared(true);
-          threadIdRef.current = null;
-          localStorage.removeItem(THREAD_ID_KEY);
-          return;
-        }
+    if (sessionCleared) return;
+    const lastMsg = [...messages].reverse().find((m) => m.role === "assistant");
+    if (!lastMsg) return;
+    for (const part of lastMsg.parts) {
+      const toolTypes = new Set(["tool-invocation", "dynamic-tool"]);
+      if (!toolTypes.has(part.type)) continue;
+      const output = (part as any).output;
+      if (
+        output &&
+        typeof output === "object" &&
+        output.type === "message-session-cleared"
+      ) {
+        setChatInviteCode(null);
+        setRedisInviteCode(null);
+        setSessionCleared(true);
+        threadIdRef.current = null;
+        localStorage.removeItem(THREAD_ID_KEY);
+        return;
       }
     }
-  }, [messages]);
+  }, [messages, sessionCleared]);
 
   useEffect(() => {
-    if (status !== "ready") return;
+    if (sessionCleared || status !== "ready") return;
     const last = messages.filter((m) => m.role === "assistant").at(-1);
     if (!last) return;
     for (const part of last.parts) {
@@ -328,7 +370,7 @@ const ChatInner = ({
         return;
       }
     }
-  }, [status, messages]);
+  }, [status, messages, sessionCleared]);
   const [input, setInput] = useState("");
   const [coinKey, setCoinKey] = useState(0);
   const busy = status === "submitted" || status === "streaming";
@@ -424,7 +466,8 @@ const ChatInner = ({
                 repoContextRef.current = null;
                 return null;
               }
-              repoContextRef.current = ` [${repo.repo}](${repo.html_url})，该项目描述为：${repo.description || "无"}，主要使用 ${repo.language || "未知"} 语言，涉及技术主题：${repo.topics.join(" · ") || "无"}。\n\n用户提问：`;
+              const context = `github项目：${repo.repo}`;
+              repoContextRef.current = context;
               setInput("请详细查询并介绍该项目");
               return repo;
             });
@@ -444,6 +487,50 @@ const ChatInner = ({
               />
             </span>
             <h1 className="chat__title">AI面试助手</h1>
+            <div className="chat__help-wrap">
+              <button
+                className="chat__help-btn"
+                type="button"
+                aria-label="使用说明"
+                title="使用说明"
+                onMouseEnter={(e) => {
+                  const tip = (
+                    e.currentTarget.parentElement as HTMLElement
+                  ).querySelector(".chat__help-tip") as HTMLElement;
+                  if (tip) tip.style.display = "block";
+                }}
+                onMouseLeave={(e) => {
+                  const tip = (
+                    e.currentTarget.parentElement as HTMLElement
+                  ).querySelector(".chat__help-tip") as HTMLElement;
+                  if (tip) tip.style.display = "none";
+                }}
+              >
+                ?
+              </button>
+              <div className="chat__help-tip">
+                <p>
+                  • <strong>面试官模式</strong> — 直接输入问题，AI 从简历/GitHub
+                  知识库检索后生成回答
+                </p>
+                <p>
+                  • <strong>面试者模式</strong> — 上传简历并邀请面试者加入，AI
+                  模拟面试
+                </p>
+                <p>
+                  • <strong>GitHub 面板</strong> —
+                  点击左侧项目卡片可注入仓库上下文提问
+                </p>
+                <p>
+                  • <strong>语音</strong> —
+                  点击输入框旁话筒按钮语音提问，回答自动播报
+                </p>
+                <p>
+                  • <strong>思考过程</strong> —
+                  每个回答折叠栏可展开查看推理与检索详情
+                </p>
+              </div>
+            </div>
           </div>
         </header>
 
@@ -463,7 +550,7 @@ const ChatInner = ({
                   旅行者，请开始你的旅程吧~
                 </span>
                 <div className="chat__empty-text--text">
-                  您可以选择扮演面试官或者面试者
+                  您可以选择扮演面试官
                 </div>
               </div>
               <div className="chat__templates-scroll">
@@ -495,10 +582,37 @@ const ChatInner = ({
             </div>
           )}
           {messages.map((message, i) => {
-            const textPartIndices = message.parts
-              .map((p, idx) => (p.type === "text" ? idx : -1))
-              .filter((idx) => idx >= 0);
-            const lastTextPartIdx = textPartIndices[textPartIndices.length - 1];
+            const displayParts =
+              message.role === "assistant"
+                ? message.parts.reduce<typeof message.parts>((acc, part) => {
+                    if (part.type === "text") {
+                      const last = acc[acc.length - 1];
+                      if (last && last.type === "text") {
+                        acc[acc.length - 1] = {
+                          type: "text",
+                          text:
+                            (last as { type: "text"; text: string }).text +
+                            (part as { type: "text"; text: string }).text,
+                        };
+                      } else {
+                        acc.push({ ...part });
+                      }
+                    } else {
+                      acc.push(part);
+                    }
+                    return acc;
+                  }, [])
+                : message.parts;
+
+            const mergedTextIdx =
+              message.role === "assistant"
+                ? displayParts.findIndex((p) => p.type === "text")
+                : -1;
+
+            const hasTextParts =
+              message.role === "assistant"
+                ? mergedTextIdx !== -1
+                : message.parts.some((p) => p.type === "text");
 
             return (
               <article
@@ -524,7 +638,7 @@ const ChatInner = ({
                   </span>
                 </div>
                 <div className="chat__message-body">
-                  {message.parts.map((part, index) => (
+                  {displayParts.map((part, index) => (
                     <MessagePart
                       key={`${message.id}-p-${index}`}
                       part={part}
@@ -533,74 +647,72 @@ const ChatInner = ({
                         part.type === "text" &&
                         message.role === "assistant" &&
                         message.id === lastAssistant?.id &&
-                        index === lastTextPartIdx &&
+                        index === mergedTextIdx &&
                         busy
                       }
                     />
                   ))}
-                  {message.role === "assistant" &&
-                    !busy &&
-                    textPartIndices.length > 0 && (
-                      <div className="chat__message-tts">
-                        <button
-                          className={`chat__tts-btn${ttsEnabled ? " chat__tts-btn--active" : ""}`}
-                          type="button"
-                          onClick={async () => {
-                            console.log(
-                              "[TTS] button clicked | ttsEnabled=",
-                              ttsEnabled,
-                            );
-                            console.log(
-                              "[TTS] part types:",
-                              message.parts.map((p) => p.type),
-                            );
-                            if (ttsEnabled) {
-                              toggleTts();
-                              return;
-                            }
+                  {message.role === "assistant" && !busy && hasTextParts && (
+                    <div className="chat__message-tts">
+                      <button
+                        className={`chat__tts-btn${ttsEnabled ? " chat__tts-btn--active" : ""}`}
+                        type="button"
+                        onClick={async () => {
+                          console.log(
+                            "[TTS] button clicked | ttsEnabled=",
+                            ttsEnabled,
+                          );
+                          console.log(
+                            "[TTS] part types:",
+                            message.parts.map((p) => p.type),
+                          );
+                          if (ttsEnabled) {
                             toggleTts();
-                            const text = message.parts
-                              .filter((p) => p.type === "text")
-                              .map((p) => p.text)
-                              .join("");
-                            console.log(
-                              `[TTS] button text extracted | textLen=${text.length} | partsCount=${message.parts.length}`,
-                            );
-                            if (text) {
-                              await ttsSynthesize(text);
-                            } else {
-                              console.warn(
-                                "[TTS] button skipped: no text in message parts",
-                              );
-                            }
-                          }}
-                          title={ttsEnabled ? "关闭语音播报" : "播报本条回复"}
-                          aria-label={
-                            ttsEnabled ? "关闭语音播报" : "播报本条回复"
+                            return;
                           }
+                          toggleTts();
+                          const text = message.parts
+                            .filter((p) => p.type === "text")
+                            .map((p) => p.text)
+                            .join("");
+                          console.log(
+                            `[TTS] button text extracted | textLen=${text.length} | partsCount=${message.parts.length}`,
+                          );
+                          if (text) {
+                            await ttsSynthesize(text);
+                          } else {
+                            console.warn(
+                              "[TTS] button skipped: no text in message parts",
+                            );
+                          }
+                        }}
+                        title={ttsEnabled ? "关闭语音播报" : "播报本条回复"}
+                        aria-label={
+                          ttsEnabled ? "关闭语音播报" : "播报本条回复"
+                        }
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
                         >
-                          <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                            {ttsEnabled && (
-                              <>
-                                <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-                                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                              </>
-                            )}
-                          </svg>
-                          <span className="chat__tts-label">
-                            {ttsEnabled ? "语音播报中" : "语音播报"}
-                          </span>
-                        </button>
-                      </div>
-                    )}
+                          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                          {ttsEnabled && (
+                            <>
+                              <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                              <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                            </>
+                          )}
+                        </svg>
+                        <span className="chat__tts-label">
+                          {ttsEnabled ? "语音播报中" : "语音播报"}
+                        </span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </article>
             );

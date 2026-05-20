@@ -1,16 +1,21 @@
 .chat-streamdown-fold {
   overflow: hidden;
+  border: none;
+  border-radius: var(--radius);
+  padding: 0;
 }
 
 .chat-streamdown-fold__header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  padding: 8px 10px;
-  background: var(--color-code-bg);
-  border: 1px solid var(--color-code-border);
-  border-radius: var(--radius);
+  padding: 10px 12px;
+  background: var(--color-surface);
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
   cursor: pointer;
   font-family: inherit;
   text-align: left;
@@ -20,14 +25,19 @@
 }
 
 .chat-streamdown-fold__header:hover {
-  background: var(--color-border);
+  background: var(--color-accent-glow, rgba(98, 160, 234, 0.08));
+}
+
+.chat-streamdown-fold--folded .chat-streamdown-fold__header {
+  border-bottom-color: transparent;
+  border-radius: var(--radius);
 }
 
 .chat-streamdown-fold__label {
   font-family: var(--font-pixel);
-  font-size: 0.5rem;
-  color: var(--color-text-dim);
-  letter-spacing: 0.06em;
+  font-size: 0.72rem;
+  color: var(--color-accent-dim);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -46,7 +56,7 @@
 }
 
 .chat-streamdown-fold__body {
-  overflow: hidden;
+  overflow-y: auto;
   max-height: 1200px;
   opacity: 1;
   transition:

@@ -1,5 +1,6 @@
 import { Tool } from '@langchain/core/tools';
 import { Logger } from '@nestjs/common';
+import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { RedisService } from '../../../redis/redis.service';
 
 const REDIS_PREFIX = 'invite_code:';
@@ -9,6 +10,7 @@ const GOODBYE_MSG =
 export async function clearSessionNode(
   state: any,
   tools: { messageTool: Tool; redisService: RedisService },
+  config?: LangGraphRunnableConfig,
 ) {
   const username: string = state.username ?? '';
   const redisKey = REDIS_PREFIX + username;
@@ -22,24 +24,32 @@ export async function clearSessionNode(
     'clearSessionNode',
   );
 
+  const keysToDelete: string[] = [];
   if (username) {
+    keysToDelete.push(redisKey);
+  }
+  if (config?.configurable?.thread_id) {
+    keysToDelete.push(`invite_code_thread:${config.configurable.thread_id}`);
+  }
+
+  for (const key of keysToDelete) {
     try {
-      const existed = await tools.redisService.get(redisKey);
+      const existed = await tools.redisService.get(key);
       if (existed) {
-        await tools.redisService.del(redisKey);
+        await tools.redisService.del(key);
         Logger.log(
-          `[清除会话] Redis删除成功 | key="${redisKey}"`,
+          `[清除会话] Redis删除成功 | key="${key}"`,
           'clearSessionNode',
         );
       } else {
         Logger.log(
-          `[清除会话] Redis key不存在，跳过删除 | key="${redisKey}"`,
+          `[清除会话] Redis key不存在，跳过删除 | key="${key}"`,
           'clearSessionNode',
         );
       }
     } catch (err) {
       Logger.error(
-        `[清除会话] Redis删除失败: ${err}`,
+        `[清除会话] Redis删除失败 | key="${key}" | ${err}`,
         err instanceof Error ? err.stack : undefined,
         'clearSessionNode',
       );

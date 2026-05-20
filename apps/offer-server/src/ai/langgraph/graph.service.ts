@@ -22,6 +22,7 @@ import { retrieveNode } from './nodes/retrieve.node';
 import { answerNode } from './nodes/answer.node';
 import { planRetrievalNode } from './nodes/planRetrieval.node';
 import { clearSessionNode } from './nodes/clearSession.node';
+import { summarizeNode } from './nodes/summarize.node';
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -199,10 +200,10 @@ export class GraphService {
       return 'retrieve';
     }
     Logger.log(
-      `[路由:answer] → END (全部回答完毕 ${subs.length}/${subs.length})`,
+      `[路由:answer] → summarize (全部回答完毕 ${subs.length}/${subs.length})`,
       'GraphService',
     );
-    return END;
+    return 'summarize';
   }
 
   private routeAfterPlan(state: any) {
@@ -324,6 +325,13 @@ export class GraphService {
           redisService: this.redisService,
         }),
       )
+      .addNode(
+        'summarize',
+        this.bindNode(summarizeNode, {
+          chatModel: this.chatModel,
+          messageTool: this.messageTool,
+        }),
+      )
       .addEdge(START, 'intentRoute')
       .addConditionalEdges('intentRoute', this.routeByIntent.bind(this), {
         generate: 'generate',
@@ -363,11 +371,12 @@ export class GraphService {
       })
       .addConditionalEdges('answer', this.routeAfterAnswer.bind(this), {
         retrieve: 'retrieve',
-        [END]: END,
+        summarize: 'summarize',
       })
       .addEdge('generate', END)
       .addEdge('notAvailable', END)
-      .addEdge('clearSession', END);
+      .addEdge('clearSession', END)
+      .addEdge('summarize', END);
 
     this.graph = builder.compile({
       checkpointer: this.checkpointer,
@@ -388,9 +397,21 @@ export class GraphService {
 
       if (checkpoints.length <= maxCheckpoints) return;
 
-      const toDelete = checkpoints.slice(maxCheckpoints);
       Logger.log(
-        `[Checkpoint裁剪] threadId=${threadId.slice(0, 8)} | 当前${checkpoints.length}条 > 上限${maxCheckpoints}, 删除${toDelete.length}条旧快照`,
+        `[Checkpoint裁剪] threadId=${threadId.slice(0, 8)} | 当前${checkpoints.length}条 > 上限${maxCheckpoints} | 排序前第一条 checkpoint_id=${checkpoints[0]?.config?.configurable?.checkpoint_id?.slice(0, 12) ?? '?'} | 最后一条 checkpoint_id=${checkpoints[checkpoints.length - 1]?.config?.configurable?.checkpoint_id?.slice(0, 12) ?? '?'}`,
+        'GraphService',
+      );
+
+      const byCheckpointIdDesc = [...checkpoints].sort((a, b) => {
+        const aId: string = a.config?.configurable?.checkpoint_id ?? '';
+        const bId: string = b.config?.configurable?.checkpoint_id ?? '';
+        return bId.localeCompare(aId);
+      });
+
+      const toKeep = byCheckpointIdDesc.slice(0, maxCheckpoints);
+      const toDelete = byCheckpointIdDesc.slice(maxCheckpoints);
+      Logger.log(
+        `[Checkpoint裁剪] 排序后 | 保留${toKeep.length}条(最新) | 删除${toDelete.length}条(最旧)`,
         'GraphService',
       );
 
@@ -409,7 +430,7 @@ export class GraphService {
       }
 
       Logger.log(
-        `[Checkpoint裁剪] 完成 | threadId=${threadId.slice(0, 8)} | 保留${maxCheckpoints}条`,
+        `[Checkpoint裁剪] 完成 | threadId=${threadId.slice(0, 8)} | 保留${toKeep.length}条`,
         'GraphService',
       );
     } catch (error) {
@@ -523,9 +544,27 @@ export class GraphService {
         messages: lcMessages,
         stream: [],
         query: lastHumanContent,
-        username: username ?? '',
         chatMemory: [],
+        username: username ?? '',
       };
+
+      const humanMsgs = [...lcMessages].reverse().filter((m: any) => {
+        const t = m._getType?.() ?? m.getType?.() ?? '';
+        return t === 'human';
+      });
+      if (humanMsgs.length >= 2) {
+        const latestText = (humanMsgs[0]?.content ?? '') as string;
+        const prevText = (humanMsgs[1]?.content ?? '') as string;
+        const uuidPattern =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (uuidPattern.test(latestText)) {
+          input.query = prevText;
+          Logger.log(
+            `[图执行|诊断] 检测到UUID邀请码回复，回退query为上一轮问题 | latest="${latestText.slice(0, 20)}" → prev="${prevText.slice(0, 40)}"`,
+            'GraphService',
+          );
+        }
+      }
     }
 
     try {
@@ -668,13 +707,23 @@ export class GraphService {
         return { threadId, chatMemory: [] };
       }
 
-      const chatMemory = (state.values as any)?.chatMemory ?? [];
+      let chatMemory = (state.values as any)?.chatMemory ?? [];
       const generation = (state.values as any)?.generation ?? '';
 
       Logger.log(
         `[记忆查询] threadId=${threadId.slice(0, 8)} | chatMemory条数=${chatMemory.length} | generation="${generation}"`,
         'GraphService',
       );
+
+      if (chatMemory.length === 0) {
+        chatMemory = await this.scanChatMemoryFromCheckpoints(threadId);
+        if (chatMemory.length > 0) {
+          Logger.log(
+            `[记忆查询] 从checkpoint直接恢复 | threadId=${threadId.slice(0, 8)} | 恢复${chatMemory.length}条`,
+            'GraphService',
+          );
+        }
+      }
 
       if (generation === 'sessionCleared') {
         Logger.log(
@@ -692,6 +741,64 @@ export class GraphService {
         'GraphService',
       );
       return { threadId, chatMemory: [] };
+    }
+  }
+
+  private async scanChatMemoryFromCheckpoints(threadId: string) {
+    try {
+      const prefix = `checkpoint:${threadId}:`;
+      const keys = await this.redisService.keys(`${prefix}*`);
+      const entriesMap = new Map<string, any>();
+
+      for (const key of keys) {
+        try {
+          let data: any = null;
+          let raw: string | null = null;
+          try {
+            raw = await this.redisService.get(key);
+          } catch {
+            raw = null;
+          }
+          if (raw) {
+            try {
+              data = JSON.parse(raw);
+            } catch {
+              continue;
+            }
+          }
+          if (!data) {
+            try {
+              const jsonRaw = await this.redisService.jsonGet(key, '.');
+              if (jsonRaw) {
+                data =
+                  typeof jsonRaw === 'string' ? JSON.parse(jsonRaw) : jsonRaw;
+              }
+            } catch {
+              continue;
+            }
+          }
+          if (!data) continue;
+          const mem = data?.checkpoint?.channel_values?.chatMemory;
+          if (Array.isArray(mem)) {
+            for (const entry of mem) {
+              const dedupKey = `${entry.role}|${entry.content?.slice(0, 80)}|${entry.timestamp}`;
+              if (!entriesMap.has(dedupKey)) {
+                entriesMap.set(dedupKey, entry);
+              }
+            }
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      return [...entriesMap.values()].sort((a, b) => a.timestamp - b.timestamp);
+    } catch (error) {
+      Logger.error(
+        `[记忆查询] checkpoint扫描失败 | threadId=${threadId.slice(0, 8)} | ${error}`,
+        'GraphService',
+      );
+      return [];
     }
   }
 }

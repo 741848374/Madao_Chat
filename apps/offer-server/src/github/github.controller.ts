@@ -213,12 +213,13 @@ export class GithubController {
     };
   }
 
-  @Delete('ingest/:repo')
+  @Delete('ingest/:owner/:name')
   async deleteGithubKnowledge(
-    @Param('repo') repo: string,
+    @Param('owner') owner: string,
+    @Param('name') name: string,
     @UserInfo() user: any,
   ) {
-    const fullName = decodeURIComponent(repo);
+    const fullName = `${decodeURIComponent(owner)}/${decodeURIComponent(name)}`;
     if (!fullName) {
       throw new BadRequestException('需要指定仓库名 owner/repo');
     }

@@ -15,6 +15,13 @@ export class RedisService {
   async del(key: string) {
     await this.redisClient.del(key);
   }
+  async jsonGet(key: string, path = '.') {
+    try {
+      return await this.redisClient.json.get(key, { path });
+    } catch {
+      return null;
+    }
+  }
   async set(key: string, value: string | number, ex?: number) {
     await this.redisClient.set(key, value);
     if (ex) {
